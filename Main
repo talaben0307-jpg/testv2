@@ -1,0 +1,677 @@
+--[[
+    Blox Fruits - Auto Farm v3 (độc lập)
+    Giữ nguyên v2 (danh sách mob + Refresh, bay trên đầu mob, tự đánh khi lại gần) và thêm:
+    - Tự bấm skill Z / X / C / V xoay vòng theo độ trễ bạn đặt
+    - Tự đổi vũ khí giữa các loại bạn tick (Melee / Sword / Gun / Blox Fruit)
+    - Tự lùi lên cao khi máu thấp, chờ máu hồi rồi quay lại farm
+    Phím F: ẩn/hiện menu
+]]
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local VirtualUser = game:GetService("VirtualUser")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local LocalPlayer = Players.LocalPlayer
+
+local env = (getgenv and getgenv()) or _G
+if env.BFFarmCleanup then pcall(env.BFFarmCleanup) end
+
+local conns = {}
+local function track(c) table.insert(conns, c) return c end
+
+-- ===== Cài đặt =====
+local WEAPON_TYPES = { "Melee", "Sword", "Gun", "Blox Fruit" }
+local SKILL_KEYS = { "Z", "X", "C", "V" }
+
+local S = {
+    Enabled = false,
+    MobName = nil,
+    Weapons = { ["Melee"] = true, ["Sword"] = false, ["Gun"] = false, ["Blox Fruit"] = false },
+    SwitchInterval = 6,     -- giây giữa 2 lần đổi vũ khí (khi tick nhiều loại)
+    Skills = { Z = false, X = false, C = false, V = false },
+    SkillDelay = 1.2,       -- giây giữa 2 lần bấm skill
+    Height = 6,
+    Speed = 250,
+    Range = 3000,
+    AttackRange = 30,
+    AttackDelay = 0.1,
+    Noclip = true,
+    RetreatBelow = 35,      -- % máu: dưới mức này thì lùi
+    ResumeAbove = 80,       -- % máu: đạt mức này thì quay lại farm
+    RetreatHeight = 120,    -- lùi lên cao bao nhiêu studs
+    AutoRetreat = true,
+}
+
+-- ===== Quét mob =====
+local function isPlayerModel(m)
+    return Players:GetPlayerFromCharacter(m) ~= nil
+end
+
+local function forEachNpcModel(fn)
+    local enemies = Workspace:FindFirstChild("Enemies")
+    if enemies then
+        for _, m in ipairs(enemies:GetChildren()) do
+            if m:IsA("Model") and m:FindFirstChildOfClass("Humanoid") and not isPlayerModel(m) then
+                fn(m)
+            end
+        end
+    else
+        for _, d in ipairs(Workspace:GetDescendants()) do
+            if d:IsA("Humanoid") then
+                local m = d.Parent
+                if m and m:IsA("Model") and not isPlayerModel(m) then fn(m) end
+            end
+        end
+    end
+end
+
+local function scanMobs()
+    local counts = {}
+    forEachNpcModel(function(m)
+        counts[m.Name] = (counts[m.Name] or 0) + 1
+    end)
+    local list = {}
+    for name, n in pairs(counts) do
+        table.insert(list, { name = name, count = n })
+    end
+    table.sort(list, function(a, b) return a.name < b.name end)
+    return list
+end
+
+local function isAliveModel(m)
+    local hum = m:FindFirstChildOfClass("Humanoid")
+    local hrp = m:FindFirstChild("HumanoidRootPart")
+    return hum ~= nil and hrp ~= nil and hum.Health > 0
+end
+
+local function findTarget(myPos)
+    local best, bestDist = nil, S.Range
+    forEachNpcModel(function(m)
+        if S.MobName and m.Name ~= S.MobName then return end
+        if isAliveModel(m) then
+            local d = (m.HumanoidRootPart.Position - myPos).Magnitude
+            if d < bestDist then best, bestDist = m, d end
+        end
+    end)
+    return best
+end
+
+-- ===== Vũ khí (xoay vòng giữa các loại được tick) =====
+local weaponIdx = 1
+local lastSwitch = os.clock()
+
+local function enabledWeapons()
+    local list = {}
+    for _, w in ipairs(WEAPON_TYPES) do
+        if S.Weapons[w] then table.insert(list, w) end
+    end
+    if #list == 0 then list[1] = "Melee" end
+    return list
+end
+
+local function currentWeaponType()
+    local list = enabledWeapons()
+    if weaponIdx > #list then weaponIdx = 1 end
+    return list[weaponIdx]
+end
+
+local function findWeapon(wtype)
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    for _, t in ipairs(char:GetChildren()) do
+        if t:IsA("Tool") and t.ToolTip == wtype then return t end
+    end
+    local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+    if bp then
+        for _, t in ipairs(bp:GetChildren()) do
+            if t:IsA("Tool") and t.ToolTip == wtype then return t end
+        end
+    end
+    return nil
+end
+
+local function equipWeapon(wtype)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local tool = findWeapon(wtype)
+    if tool and hum and tool.Parent ~= char then
+        hum:EquipTool(tool)
+    end
+    return tool
+end
+
+-- ===== Skill =====
+local skillIdx = 0
+local lastSkill = 0
+
+local function pressKey(name)
+    local code = Enum.KeyCode[name]
+    pcall(function() VirtualInputManager:SendKeyEvent(true, code, false, game) end)
+    task.delay(0.06, function()
+        pcall(function() VirtualInputManager:SendKeyEvent(false, code, false, game) end)
+    end)
+end
+
+local function nextSkill()
+    for _ = 1, #SKILL_KEYS do
+        skillIdx = skillIdx % #SKILL_KEYS + 1
+        local k = SKILL_KEYS[skillIdx]
+        if S.Skills[k] then return k end
+    end
+    return nil
+end
+
+-- ===== Vòng lặp farm =====
+local target = nil
+local lastAttack = 0
+local lastStatus = ""
+local statusLabel
+local retreating = false
+local retreatAnchor = nil
+
+local function setStatus(t)
+    if t ~= lastStatus and statusLabel then
+        lastStatus = t
+        statusLabel.Text = t
+    end
+end
+
+local function moveToward(hrp, goal, speed, dt, lookAt)
+    local diff = goal - hrp.Position
+    local dist = diff.Magnitude
+    local step = math.min(dist, speed * dt)
+    local newPos = hrp.Position + (dist > 0.01 and diff.Unit or Vector3.zero) * step
+    if lookAt then
+        hrp.CFrame = CFrame.lookAt(newPos, lookAt)
+    else
+        hrp.CFrame = CFrame.new(newPos) * (hrp.CFrame - hrp.CFrame.Position)
+    end
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
+    return dist
+end
+
+track(RunService.Heartbeat:Connect(function(dt)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+    if S.Enabled and S.Noclip and char then
+        for _, p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") and p.CanCollide then p.CanCollide = false end
+        end
+    end
+
+    if not S.Enabled then return end
+    if not (hum and hrp) or hum.Health <= 0 then
+        target, retreating, retreatAnchor = nil, false, nil
+        setStatus("Đang chờ hồi sinh...")
+        return
+    end
+
+    -- Lùi khi máu thấp
+    local hpPct = hum.MaxHealth > 0 and (hum.Health / hum.MaxHealth * 100) or 100
+    if S.AutoRetreat then
+        if not retreating and hpPct < S.RetreatBelow then
+            retreating = true
+            retreatAnchor = hrp.Position + Vector3.new(0, S.RetreatHeight, 0)
+        elseif retreating and hpPct >= S.ResumeAbove then
+            retreating, retreatAnchor = false, nil
+        end
+    else
+        retreating, retreatAnchor = false, nil
+    end
+
+    if retreating then
+        moveToward(hrp, retreatAnchor, math.max(S.Speed, 200), dt, nil)
+        setStatus(("Máu thấp (%d%%), đang chờ hồi tới %d%%"):format(hpPct, S.ResumeAbove))
+        return
+    end
+
+    if not (target and target.Parent and isAliveModel(target)) then
+        target = findTarget(hrp.Position)
+    end
+    if not target then
+        setStatus(S.MobName and ("Chờ " .. S.MobName .. " hồi sinh...") or "Không thấy mob nào")
+        return
+    end
+
+    local tHrp = target.HumanoidRootPart
+    moveToward(hrp, tHrp.Position + Vector3.new(0, S.Height, 0), S.Speed, dt, tHrp.Position)
+
+    local realDist = (tHrp.Position - hrp.Position).Magnitude
+    setStatus(("Farm: %s (%d studs) · %s"):format(target.Name, realDist, currentWeaponType()))
+
+    if realDist <= S.AttackRange then
+        local now = os.clock()
+
+        -- Đổi vũ khí theo chu kỳ (chỉ khi tick từ 2 loại trở lên)
+        local list = enabledWeapons()
+        if #list > 1 and now - lastSwitch >= S.SwitchInterval then
+            lastSwitch = now
+            weaponIdx = weaponIdx % #list + 1
+        end
+        local wtype = currentWeaponType()
+        local tool = equipWeapon(wtype)
+
+        -- Đánh thường
+        if now - lastAttack >= S.AttackDelay then
+            lastAttack = now
+            if tool then pcall(function() tool:Activate() end) end
+            pcall(function()
+                VirtualUser:Button1Down(Vector2.new(0, 0))
+                VirtualUser:Button1Up(Vector2.new(0, 0))
+            end)
+        end
+
+        -- Skill xoay vòng
+        if tool and tool.Parent == char and now - lastSkill >= S.SkillDelay then
+            local k = nextSkill()
+            if k then
+                lastSkill = now
+                pressKey(k)
+            end
+        end
+    end
+end))
+
+track(LocalPlayer.Idled:Connect(function()
+    pcall(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new(0, 0))
+    end)
+end))
+
+track(LocalPlayer.CharacterAdded:Connect(function()
+    target, retreating, retreatAnchor = nil, false, nil
+end))
+
+-- ===== Giao diện =====
+local parentGui = (gethui and gethui()) or CoreGui
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "BFFarmGui"
+Gui.ResetOnSpawn = false
+Gui.Parent = parentGui
+
+local BG = Color3.fromRGB(16, 16, 26)
+local EL = Color3.fromRGB(30, 30, 46)
+local ACC = Color3.fromRGB(0, 229, 255)
+local ACCDIM = Color3.fromRGB(0, 96, 118)
+local GOOD = Color3.fromRGB(70, 220, 130)
+local TXT = Color3.fromRGB(240, 240, 248)
+local SUB = Color3.fromRGB(150, 150, 176)
+
+local function mk(class, props, kids)
+    local i = Instance.new(class)
+    if i:IsA("GuiObject") then i.BorderSizePixel = 0 end
+    for k, v in pairs(props) do i[k] = v end
+    for _, c in ipairs(kids or {}) do c.Parent = i end
+    return i
+end
+local function round(r) return mk("UICorner", { CornerRadius = UDim.new(0, r) }) end
+
+local Main = mk("Frame", {
+    Parent = Gui,
+    Size = UDim2.fromOffset(310, 500),
+    Position = UDim2.new(0, 60, 0.5, -250),
+    BackgroundColor3 = BG,
+}, { round(12), mk("UIStroke", { Color = ACC, Thickness = 1.5, Transparency = 0.3 }) })
+
+local Title = mk("TextLabel", {
+    Parent = Main,
+    Size = UDim2.new(1, 0, 0, 36),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBold,
+    Text = "Blox Fruits Farm v3",
+    TextSize = 15,
+    TextColor3 = ACC,
+})
+
+do
+    local dragging, startIn, startPos = false, nil, nil
+    Title.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging, startIn, startPos = true, i.Position, Main.Position
+        end
+    end)
+    track(UserInputService.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local d = i.Position - startIn
+            Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        end
+    end))
+    track(UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end))
+end
+
+local close = mk("TextButton", {
+    Parent = Main,
+    AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, -8, 0, 6),
+    Size = UDim2.fromOffset(24, 24),
+    BackgroundColor3 = EL,
+    Font = Enum.Font.GothamBold,
+    Text = "✕",
+    TextSize = 12,
+    TextColor3 = TXT,
+    AutoButtonColor = false,
+}, { round(12) })
+
+local Body = mk("ScrollingFrame", {
+    Parent = Main,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 40),
+    Size = UDim2.new(1, -20, 1, -72),
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    ScrollBarThickness = 3,
+    ScrollBarImageColor3 = ACC,
+}, {
+    mk("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6) }),
+    mk("UIPadding", { PaddingRight = UDim.new(0, 6) }),
+})
+
+local order = 0
+local function row(h)
+    order += 1
+    return mk("Frame", {
+        Parent = Body,
+        LayoutOrder = order,
+        Size = UDim2.new(1, 0, 0, h),
+        BackgroundColor3 = EL,
+    }, { round(8) })
+end
+
+local function section(text)
+    order += 1
+    mk("TextLabel", {
+        Parent = Body,
+        LayoutOrder = order,
+        Size = UDim2.new(1, 0, 0, 20),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold,
+        Text = string.upper(text),
+        TextSize = 11,
+        TextColor3 = ACC,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+end
+
+local function label(parent, text, w)
+    return mk("TextLabel", {
+        Parent = parent,
+        Position = UDim2.new(0, 10, 0, 0),
+        Size = UDim2.new(w or 0.55, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.Gotham,
+        Text = text,
+        TextSize = 12,
+        TextColor3 = TXT,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    })
+end
+
+local function numBox(parent, default, onChange)
+    local box = mk("TextBox", {
+        Parent = parent,
+        AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, -8, 0.5, 0),
+        Size = UDim2.new(0.3, 0, 0, 24),
+        BackgroundColor3 = BG,
+        Font = Enum.Font.GothamBold,
+        Text = tostring(default),
+        TextSize = 12,
+        TextColor3 = ACC,
+        ClearTextOnFocus = false,
+    }, { round(6) })
+    box.FocusLost:Connect(function()
+        local n = tonumber(box.Text)
+        if n then onChange(n) else box.Text = tostring(default) end
+    end)
+    return box
+end
+
+local function numRow(text, default, onChange)
+    local r = row(34)
+    label(r, text, 0.62)
+    numBox(r, default, onChange)
+end
+
+-- Hàng nút bật/tắt đơn
+local function toggleRow(text, get, set)
+    local r = row(34)
+    local b = mk("TextButton", {
+        Parent = r,
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.Gotham,
+        Text = "",
+        TextSize = 12,
+        TextColor3 = TXT,
+        AutoButtonColor = false,
+    })
+    local function render()
+        b.Text = text .. ": " .. (get() and "BẬT" or "TẮT")
+        b.TextColor3 = get() and GOOD or TXT
+    end
+    b.MouseButton1Click:Connect(function() set(not get()) render() end)
+    render()
+end
+
+-- Hàng nhiều ô chọn (chip) cạnh nhau
+local function chipRow(names, isOn, setOn)
+    local r = row(34)
+    local n = #names
+    local chips = {}
+    local function render()
+        for _, c in ipairs(chips) do
+            local on = isOn(c.name)
+            c.btn.BackgroundColor3 = on and ACCDIM or BG
+            c.btn.TextColor3 = on and ACC or SUB
+        end
+    end
+    for i, name in ipairs(names) do
+        local btn = mk("TextButton", {
+            Parent = r,
+            Position = UDim2.new((i - 1) / n, 3, 0.5, -12),
+            Size = UDim2.new(1 / n, -6, 0, 24),
+            BackgroundColor3 = BG,
+            Font = Enum.Font.GothamBold,
+            Text = name,
+            TextSize = 11,
+            TextColor3 = SUB,
+            AutoButtonColor = false,
+        }, { round(6) })
+        btn.MouseButton1Click:Connect(function()
+            setOn(name, not isOn(name))
+            render()
+        end)
+        table.insert(chips, { name = name, btn = btn })
+    end
+    render()
+end
+
+-- Nút Farm
+local farmRow = row(40)
+local farmBtn = mk("TextButton", {
+    Parent = farmRow,
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBold,
+    Text = "",
+    TextSize = 14,
+    TextColor3 = SUB,
+    AutoButtonColor = false,
+})
+local function renderFarm()
+    farmBtn.Text = "AUTO FARM: " .. (S.Enabled and "BẬT" or "TẮT")
+    farmBtn.TextColor3 = S.Enabled and GOOD or SUB
+end
+farmBtn.MouseButton1Click:Connect(function()
+    S.Enabled = not S.Enabled
+    if not S.Enabled then
+        target, retreating, retreatAnchor = nil, false, nil
+        setStatus("Đã tắt")
+    end
+    renderFarm()
+end)
+
+-- Danh sách mob
+section("Chọn mob")
+local headRow = row(32)
+local selLabel = label(headRow, "", 0.65)
+selLabel.TextSize = 11
+local refreshBtn = mk("TextButton", {
+    Parent = headRow,
+    AnchorPoint = Vector2.new(1, 0.5),
+    Position = UDim2.new(1, -8, 0.5, 0),
+    Size = UDim2.new(0, 84, 0, 24),
+    BackgroundColor3 = BG,
+    Font = Enum.Font.GothamBold,
+    Text = "⟳ Refresh",
+    TextSize = 12,
+    TextColor3 = ACC,
+    AutoButtonColor = false,
+}, { round(6) })
+
+local listRow = row(150)
+local List = mk("ScrollingFrame", {
+    Parent = listRow,
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 6, 0, 6),
+    Size = UDim2.new(1, -12, 1, -12),
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    ScrollBarThickness = 3,
+    ScrollBarImageColor3 = ACC,
+}, {
+    mk("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 3) }),
+})
+
+local rows = {}
+local function renderSelection()
+    selLabel.Text = S.MobName and ("Đang chọn: " .. S.MobName) or "Chưa chọn (đánh mob gần nhất)"
+    for _, r in ipairs(rows) do
+        local on = (r.name ~= nil and r.name == S.MobName)
+        r.btn.BackgroundColor3 = on and ACCDIM or BG
+        r.btn.TextColor3 = on and ACC or TXT
+    end
+end
+
+local function rebuildList()
+    for _, r in ipairs(rows) do r.btn:Destroy() end
+    table.clear(rows)
+    local mobs = scanMobs()
+    if #mobs == 0 then
+        local b = mk("TextButton", {
+            Parent = List,
+            Size = UDim2.new(1, 0, 0, 26),
+            BackgroundTransparency = 1,
+            Font = Enum.Font.Gotham,
+            Text = "Không thấy mob nào (lại gần rồi Refresh)",
+            TextSize = 11,
+            TextColor3 = SUB,
+            AutoButtonColor = false,
+        })
+        table.insert(rows, { btn = b, name = nil })
+    end
+    for i, m in ipairs(mobs) do
+        local b = mk("TextButton", {
+            Parent = List,
+            LayoutOrder = i,
+            Size = UDim2.new(1, 0, 0, 26),
+            BackgroundColor3 = BG,
+            Font = Enum.Font.Gotham,
+            Text = ("  %s  (%d)"):format(m.name, m.count),
+            TextSize = 12,
+            TextColor3 = TXT,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            AutoButtonColor = false,
+        }, { round(6) })
+        b.MouseButton1Click:Connect(function()
+            S.MobName = (S.MobName == m.name) and nil or m.name
+            target = nil
+            renderSelection()
+        end)
+        table.insert(rows, { btn = b, name = m.name })
+    end
+    renderSelection()
+end
+
+refreshBtn.MouseButton1Click:Connect(function()
+    rebuildList()
+    setStatus("Đã quét lại danh sách mob")
+end)
+
+-- Vũ khí
+section("Vũ khí (tick nhiều loại = tự đổi)")
+chipRow(WEAPON_TYPES,
+    function(n) return S.Weapons[n] end,
+    function(n, v)
+        S.Weapons[n] = v
+        weaponIdx = 1
+    end)
+numRow("Đổi vũ khí mỗi (giây)", S.SwitchInterval, function(v) S.SwitchInterval = math.clamp(v, 1, 60) end)
+
+-- Skill
+section("Skill tự động")
+chipRow(SKILL_KEYS,
+    function(k) return S.Skills[k] end,
+    function(k, v) S.Skills[k] = v end)
+numRow("Độ trễ giữa 2 skill (giây)", S.SkillDelay, function(v) S.SkillDelay = math.clamp(v, 0.2, 10) end)
+
+-- Di chuyển / đánh
+section("Di chuyển và đánh")
+numRow("Độ cao trên mob", S.Height, function(v) S.Height = math.clamp(v, 0, 40) end)
+numRow("Tầm tự đánh (studs)", S.AttackRange, function(v) S.AttackRange = math.clamp(v, 5, 100) end)
+numRow("Tốc độ bay (studs/s)", S.Speed, function(v) S.Speed = math.clamp(v, 20, 600) end)
+numRow("Tầm tìm mob", S.Range, function(v) S.Range = math.clamp(v, 50, 10000) end)
+toggleRow("Noclip khi farm", function() return S.Noclip end, function(v) S.Noclip = v end)
+
+-- Lùi khi máu thấp
+section("An toàn")
+toggleRow("Tự lùi khi máu thấp", function() return S.AutoRetreat end, function(v) S.AutoRetreat = v end)
+numRow("Lùi khi máu dưới (%)", S.RetreatBelow, function(v) S.RetreatBelow = math.clamp(v, 5, 90) end)
+numRow("Quay lại khi máu đạt (%)", S.ResumeAbove, function(v) S.ResumeAbove = math.clamp(v, 10, 100) end)
+numRow("Lùi lên cao (studs)", S.RetreatHeight, function(v) S.RetreatHeight = math.clamp(v, 30, 500) end)
+
+statusLabel = mk("TextLabel", {
+    Parent = Main,
+    AnchorPoint = Vector2.new(0, 1),
+    Position = UDim2.new(0, 12, 1, -8),
+    Size = UDim2.new(1, -24, 0, 20),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham,
+    Text = "Sẵn sàng",
+    TextSize = 11,
+    TextColor3 = SUB,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextTruncate = Enum.TextTruncate.AtEnd,
+})
+
+track(UserInputService.InputBegan:Connect(function(i, gp)
+    if not gp and i.KeyCode == Enum.KeyCode.F then
+        Main.Visible = not Main.Visible
+    end
+end))
+
+env.BFFarmCleanup = function()
+    S.Enabled = false
+    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    table.clear(conns)
+    pcall(function() Gui:Destroy() end)
+    env.BFFarmCleanup = nil
+end
+close.MouseButton1Click:Connect(function()
+    if env.BFFarmCleanup then env.BFFarmCleanup() end
+end)
+
+renderFarm()
+rebuildList()
