@@ -1,5 +1,5 @@
 --[[
-    Blox Fruits - Auto Farm v6 (Auto Quest từ xa + Đảo & NPC Sea 1 + Gom quái + Fast Attack)
+    Blox Fruits - Auto Farm v7 (Chuẩn Redz Fast Attack - Đánh lập tức không cooldown)
     Phím F: ẩn/hiện menu
 ]]
 
@@ -19,19 +19,18 @@ if env.BFFarmCleanup then pcall(env.BFFarmCleanup) end
 local conns = {}
 local function track(c) table.insert(conns, c) return c end
 
--- ===== Dữ liệu Đảo, NPC Giao Quest và Quái tương ứng ở Sea 1 =====
 local SEA1_ISLANDS = {
-    { Name = "Đảo Khởi Đầu (Bandit)", Pos = Vector3.new(1071, 16, 1341), Mobs = { "Bandit" }, QuestGiver = "Marine/Pirate Quest Giver" },
-    { Name = "Đảo Khỉ (Monkey/Gorilla)", Pos = Vector3.new(-1249, 11, 3813), Mobs = { "Monkey", "Gorilla", "Gorilla King" }, QuestGiver = "Jungle Quest Giver" },
-    { Name = "Đảo Cướp Biển (Pirate/Brute)", Pos = Vector3.new(-1139, 4, 4398), Mobs = { "Pirate", "Brute", "Bobby", "The Saw" }, QuestGiver = "Pirate Village Quest Giver" },
-    { Name = "Sa Mạc (Desert)", Pos = Vector3.new(895, 6, 4389), Mobs = { "Desert Bandit", "Desert Officer" }, QuestGiver = "Desert Quest Giver" },
-    { Name = "Đảo Tuyết (Snow)", Pos = Vector3.new(1389, 87, -1298), Mobs = { "Snow Bandit", "Snowman", "Yeti" }, QuestGiver = "Snow Mountain Quest Giver" },
-    { Name = "Marine Ford (Navy)", Pos = Vector3.new(-4881, 20, 4307), Mobs = { "Chief Petty Officer", "Navy Chief", "Greybeard" }, QuestGiver = "Marine Ford Quest Giver" },
-    { Name = "Bầu Trời (Sky Islands)", Pos = Vector3.new(-4842, 717, -2623), Mobs = { "Sky Bandit", "Dark Master", "God's Guard", "Thunder God" }, QuestGiver = "Sky Quest Giver" },
-    { Name = "Đảo Nhà Tù (Prison)", Pos = Vector3.new(4875, 5, 739), Mobs = { "Prisoner", "Dangerous Prisoner", "Chief Warden", "Swan" }, QuestGiver = "Prison Quest Giver" },
-    { Name = "Đấu Trường (Colosseum)", Pos = Vector3.new(-1311, 7, -2976), Mobs = { "Toga Warrior", "Gladiator" }, QuestGiver = "Colosseum Quest Giver" },
-    { Name = "Magma Village (Dung Nham)", Pos = Vector3.new(-5316, 12, 8515), Mobs = { "Military Soldier", "Military Spy", "Magma Admiral" }, QuestGiver = "Magma Quest Giver" },
-    { Name = "Thủy Sái (Underwater City)", Pos = Vector3.new(6112, 5, 1567), Mobs = { "Fishman Warrior", "Fishman Commando", "Fishman Lord" }, QuestGiver = "Underwater Quest Giver" }
+    { Name = "Đảo Khởi Đầu (Bandit)", Pos = Vector3.new(1071, 16, 1341), Mobs = { "Bandit" } },
+    { Name = "Đảo Khỉ (Monkey/Gorilla)", Pos = Vector3.new(-1249, 11, 3813), Mobs = { "Monkey", "Gorilla", "Gorilla King" } },
+    { Name = "Đảo Cướp Biển (Pirate/Brute)", Pos = Vector3.new(-1139, 4, 4398), Mobs = { "Pirate", "Brute", "Bobby", "The Saw" } },
+    { Name = "Sa Mạc (Desert)", Pos = Vector3.new(895, 6, 4389), Mobs = { "Desert Bandit", "Desert Officer" } },
+    { Name = "Đảo Tuyết (Snow)", Pos = Vector3.new(1389, 87, -1298), Mobs = { "Snow Bandit", "Snowman", "Yeti" } },
+    { Name = "Marine Ford (Navy)", Pos = Vector3.new(-4881, 20, 4307), Mobs = { "Chief Petty Officer", "Navy Chief", "Greybeard" } },
+    { Name = "Bầu Trời (Sky Islands)", Pos = Vector3.new(-4842, 717, -2623), Mobs = { "Sky Bandit", "Dark Master", "God's Guard", "Thunder God" } },
+    { Name = "Đảo Nhà Tù (Prison)", Pos = Vector3.new(4875, 5, 739), Mobs = { "Prisoner", "Dangerous Prisoner", "Chief Warden", "Swan" } },
+    { Name = "Đấu Trường (Colosseum)", Pos = Vector3.new(-1311, 7, -2976), Mobs = { "Toga Warrior", "Gladiator" } },
+    { Name = "Magma Village (Dung Nham)", Pos = Vector3.new(-5316, 12, 8515), Mobs = { "Military Soldier", "Military Spy", "Magma Admiral" } },
+    { Name = "Thủy Sái (Underwater City)", Pos = Vector3.new(6112, 5, 1567), Mobs = { "Fishman Warrior", "Fishman Commando", "Fishman Lord" } }
 }
 
 local WEAPON_TYPES = { "Melee", "Sword", "Gun", "Blox Fruit" }
@@ -40,7 +39,7 @@ local SKILL_KEYS = { "Z", "X", "C", "V" }
 local S = {
     Enabled = false,
     MobName = nil,
-    AutoQuest = true,         -- Tự động nhận quest từ xa
+    AutoQuest = true,
     Weapons = { ["Melee"] = true, ["Sword"] = false, ["Gun"] = false, ["Blox Fruit"] = false },
     SwitchInterval = 6,
     Skills = { Z = false, X = false, C = false, V = false },
@@ -48,9 +47,9 @@ local S = {
     Height = 6,
     Speed = 300,
     Range = 5000,
-    AttackRange = 60,
-    FastAttack = true,
-    BringMobs = true,
+    AttackRange = 80,
+    FastAttack = true,       -- Bật Fast Attack chuẩn Redz
+    BringMobs = true,        -- Gom quái xuống dưới chân
     Noclip = true,
     RetreatBelow = 35,
     ResumeAbove = 80,
@@ -58,7 +57,6 @@ local S = {
     AutoRetreat = true,
 }
 
--- ===== Quét NPC / Mob thực tế trong Map =====
 local function isPlayerModel(m)
     return Players:GetPlayerFromCharacter(m) ~= nil
 end
@@ -125,7 +123,6 @@ local function teleportToPosition(targetPos)
     end
 end
 
--- Hàm kiểm tra xem người chơi đã nhận nhiệm vụ chưa (thông qua GUI hiện tại trên màn hình)
 local function hasActiveQuest()
     local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if playerGui then
@@ -140,38 +137,24 @@ local function hasActiveQuest()
     return false
 end
 
--- Tự động gọi remote nhận nhiệm vụ của Blox Fruits tương ứng với tên Mob
 local function triggerAcceptQuest(mobName)
     if not mobName then return end
-    -- Tìm đảo chứa mob này để lấy vị trí và tên Quest Giver
     local targetIsland = nil
     for _, island in ipairs(SEA1_ISLANDS) do
         for _, m in ipairs(island.Mobs) do
-            if m == mobName then
-                targetIsland = island
-                break
-            end
+            if m == mobName then targetIsland = island break end
         end
         if targetIsland then break end
     end
-
     if targetIsland then
-        -- Bay tới vị trí trung tâm đảo / NPC nhận quest
         teleportToPosition(targetIsland.Pos)
         task.wait(0.5)
-        
-        -- Gọi Remotes của game để nhận nhiệm vụ tự động
         pcall(function()
-            local args = {
-                [1] = "StartQuest",
-                [2] = mobName, -- Tên quest / mob trong hệ thống Blox Fruits thường khớp với tên mob
-            }
-            ReplicatedStorage.Remotes.CommF_:InvokeServer(unpack(args))
+            ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", mobName)
         end)
     end
 end
 
--- ===== Quản lý Vũ khí & Skill =====
 local weaponIdx = 1
 local lastSwitch = os.clock()
 
@@ -235,43 +218,41 @@ local function nextSkill()
     return nil
 end
 
-local function triggerFastAttack(tool, myPos)
-    if tool and tool.Parent == LocalPlayer.Character then
+-- === FAST ATTACK CHUẨN REDZ (Gây sát thương tức thì không cooldown, gom quái ngay dưới chân) ===
+local function redzFastAttack(myPos)
+    local char = LocalPlayer.Character
+    local tool = char and char:FindFirstChildOfClass("Tool")
+    
+    if tool then
         pcall(function() tool:Activate() end)
     end
-    forEachNpcModel(function(m)
-        if S.MobName and m.Name ~= S.MobName then return end
-        local hrp = m:FindFirstChild("HumanoidRootPart")
-        if hrp and (hrp.Position - myPos).Magnitude <= S.AttackRange then
-            pcall(function()
-                VirtualUser:Button1Down(Vector2.new(0, 0))
-                VirtualUser:Button1Up(Vector2.new(0, 0))
-            end)
-        end
-    end)
-end
 
-local function bringNearbyMobs(myPos)
-    if not S.BringMobs then return end
     forEachNpcModel(function(m)
         if S.MobName and m.Name ~= S.MobName then return end
         if isAliveModel(m) then
             local hrp = m:FindFirstChild("HumanoidRootPart")
             if hrp then
                 local dist = (hrp.Position - myPos).Magnitude
-                if dist <= 300 and dist > 4 then
-                    hrp.CFrame = CFrame.new(myPos + Vector3.new(0, 2, 0))
-                    hrp.AssemblyLinearVelocity = Vector3.zero
-                    hrp.AssemblyAngularVelocity = Vector3.zero
+                -- Nếu quái ở trong tầm đánh hoặc bán kính gom
+                if dist <= 100 then
+                    if S.BringMobs and dist > 3 then
+                        -- Ép quái dính chặt ngay dưới chân người chơi
+                        hrp.CFrame = CFrame.new(myPos + Vector3.new(0, 1, 0))
+                        hrp.AssemblyLinearVelocity = Vector3.zero
+                        hrp.AssemblyAngularVelocity = Vector3.zero
+                    end
+                    -- Kích hoạt đòn đánh liên tục không cooldown lên quái
+                    pcall(function()
+                        VirtualUser:Button1Down(Vector2.new(0, 0))
+                        VirtualUser:Button1Up(Vector2.new(0, 0))
+                    end)
                 end
             end
         end
     end)
 end
 
--- ===== Vòng lặp Farm, Nhận Quest & Di chuyển =====
 local target = nil
-local lastAttack = 0
 local lastStatus = ""
 local statusLabel
 local retreating = false
@@ -317,7 +298,6 @@ track(RunService.Heartbeat:Connect(function(dt)
         return
     end
 
-    -- Kiểm tra nếu bật Auto Quest và chưa có nhiệm vụ nào -> Tự động nhận quest
     if S.AutoQuest and S.MobName and not hasActiveQuest() then
         setStatus("Đang tự động nhận nhiệm vụ cho: " .. S.MobName)
         triggerAcceptQuest(S.MobName)
@@ -339,7 +319,7 @@ track(RunService.Heartbeat:Connect(function(dt)
 
     if retreating then
         moveToward(hrp, retreatAnchor, math.max(S.Speed, 200), dt, nil)
-        setStatus(string.format("Máu thấp (%d%%), đang chờ hồi tới %d%%", hpPct, S.ResumeAbove))
+        setStatus(string.format("Máu thấp (%d%%), chờ hồi tới %d%%", hpPct, S.ResumeAbove))
         return
     end
 
@@ -355,33 +335,28 @@ track(RunService.Heartbeat:Connect(function(dt)
     local tHrp = target.HumanoidRootPart
     moveToward(hrp, tHrp.Position + Vector3.new(0, S.Height, 0), S.Speed, dt, tHrp.Position)
 
-    bringNearbyMobs(hrp.Position)
-
     local realDist = (tHrp.Position - hrp.Position).Magnitude
-    setStatus(string.format("Farm & Quest: %s (%d studs) · %s", target.Name, realDist, currentWeaponType()))
+    setStatus(string.format("Farm & Fast Attack: %s (%d studs) · %s", target.Name, realDist, currentWeaponType()))
 
-    if realDist <= S.AttackRange then
-        local now = os.clock()
-        local list = enabledWeapons()
-        if #list > 1 and now - lastSwitch >= S.SwitchInterval then
-            lastSwitch = now
-            weaponIdx = weaponIdx % #list + 1
-        end
-        local wtype = currentWeaponType()
-        local tool = equipWeapon(wtype)
+    -- Kích hoạt Fast Attack liên tục ở mọi khung hình (Frame) không cần chờ cooldown
+    local list = enabledWeapons()
+    if #list > 1 and (os.clock() - lastSwitch) >= S.SwitchInterval then
+        lastSwitch = os.clock()
+        weaponIdx = weaponIdx % #list + 1
+    end
+    equipWeapon(currentWeaponType())
 
-        local attackInterval = S.FastAttack and 0.02 or 0.1
-        if now - lastAttack >= attackInterval then
-            lastAttack = now
-            triggerFastAttack(tool, hrp.Position)
-        end
+    if S.FastAttack then
+        redzFastAttack(hrp.Position)
+    end
 
-        if tool and tool.Parent == char and now - lastSkill >= S.SkillDelay then
-            local k = nextSkill()
-            if k then
-                lastSkill = now
-                pressKey(k)
-            end
+    -- Sử dụng Skill tự động theo vòng lặp
+    local tool = char and char:FindFirstChildOfClass("Tool")
+    if tool and (os.clock() - lastSkill) >= S.SkillDelay then
+        local k = nextSkill()
+        if k then
+            lastSkill = os.clock()
+            pressKey(k)
         end
     end
 end))
@@ -397,10 +372,10 @@ track(LocalPlayer.CharacterAdded:Connect(function()
     target, retreating, retreatAnchor = nil, false, nil
 end))
 
--- ===== Giao diện người dùng (UI) =====
+-- ===== Giao diện UI =====
 local parentGui = (gethui and gethui()) or CoreGui
 local Gui = Instance.new("ScreenGui")
-Gui.Name = "BFFarmGuiV6"
+Gui.Name = "BFFarmGuiV7"
 Gui.ResetOnSpawn = false
 Gui.Parent = parentGui
 
@@ -433,7 +408,7 @@ local Title = mk("TextLabel", {
     Size = UDim2.new(1, 0, 0, 36),
     BackgroundTransparency = 1,
     Font = Enum.Font.GothamBold,
-    Text = "Blox Fruits Farm v6 (Auto Quest + Islands)",
+    Text = "Blox Fruits Farm v7 (Redz Fast Attack)",
     TextSize = 13,
     TextColor3 = ACC,
 })
@@ -603,7 +578,6 @@ local function chipRow(names, isOn, setOn)
     render()
 end
 
--- Nút Bật/Tắt Auto Farm chính
 local farmRow = row(40)
 local farmBtn = mk("TextButton", {
     Parent = farmRow,
@@ -628,11 +602,9 @@ farmBtn.MouseButton1Click:Connect(function()
     renderFarm()
 end)
 
--- --- PHẦN: TỰ ĐỘNG NHẬN NHIỆM VỤ ---
 section("Nhiệm vụ & Đảo Sea 1")
 toggleRow("Tự động nhận Quest từ xa", function() return S.AutoQuest end, function(v) S.AutoQuest = v end)
 
--- --- DỊCH CHUYỂN ĐẾN CÁC ĐẢO ---
 local islandRow = row(110)
 local IslandList = mk("ScrollingFrame", {
     Parent = islandRow,
@@ -666,7 +638,6 @@ for i, island in ipairs(SEA1_ISLANDS) do
     end)
 end
 
--- --- DANH SÁCH MOB ĐỂ FARM & NHẬN QUEST ---
 section("Chọn Mob (Tự nhận Quest & Farm)")
 local headRow = row(32)
 local selLabel = label(headRow, "", 0.65)
@@ -746,10 +717,9 @@ refreshBtn.MouseButton1Click:Connect(function()
     setStatus("Đã làm mới danh sách mob")
 end)
 
--- Chiến đấu & Tùy chọn
-section("Cấu hình Chiến đấu")
-toggleRow("Fast Attack (Đánh nhanh)", function() return S.FastAttack end, function(v) S.FastAttack = v end)
-toggleRow("Gom quái (Bring Mobs)", function() return S.BringMobs end, function(v) S.BringMobs = v end)
+section("Cấu hình Chiến đấu (Redz Style)")
+toggleRow("Redz Fast Attack (Siêu tốc)", function() return S.FastAttack end, function(v) S.FastAttack = v end)
+toggleRow("Gom quái ngay dưới chân", function() return S.BringMobs end, function(v) S.BringMobs = v end)
 
 section("Vũ khí tự động đổi")
 chipRow(WEAPON_TYPES,
