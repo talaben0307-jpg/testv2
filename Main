@@ -1,118 +1,73 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+if PlayerGui:FindFirstChild("DivergentFistGUI") then
+	PlayerGui.DivergentFistGUI:Destroy()
+end
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "DivergentFistGUI"
 ScreenGui.ResetOnSpawn = false
-local PlayerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.Parent = PlayerGui
 
-local Frame = Instance.new("Frame")
-Frame.Name = "DFContainer"
-Frame.Size = UDim2.fromOffset(80, 80)
-Frame.Position = UDim2.new(0.85, 0, 0.08, 0)
-Frame.AnchorPoint = Vector2.new(0.5, 0.5)
-Frame.BackgroundTransparency = 1
-Frame.Parent = ScreenGui
+local MainButton = Instance.new("TextButton")
+MainButton.Size = UDim2.fromOffset(130, 50)
+MainButton.Position = UDim2.new(0.75, 0, 0.15, 0)
+MainButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+MainButton.Text = "DIVERGENT FIST"
+MainButton.TextScaled = true
+MainButton.Font = Enum.Font.GothamBold
+MainButton.TextColor3 = Color3.new(1, 1, 1)
+MainButton.Parent = ScreenGui
 
 local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(1, 0)
-UICorner.Parent = Frame
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = MainButton
 
-local ImageButton = Instance.new("ImageButton")
-ImageButton.Size = UDim2.new(1, 0, 1, 0)
-ImageButton.Position = UDim2.new(0, 0, 0, 0)
-ImageButton.BackgroundTransparency = 1
-ImageButton.Image = "rbxassetid://122912702738362"
-ImageButton.ImageTransparency = 0.16
-ImageButton.ScaleType = Enum.ScaleType.Fit
-ImageButton.AutoButtonColor = false
-ImageButton.Parent = Frame
-
-local UICorner2 = Instance.new("UICorner")
-UICorner2.CornerRadius = UDim.new(1, 0)
-UICorner2.Parent = ImageButton
-
-local TextButton = Instance.new("TextButton")
-TextButton.Size = UDim2.fromOffset(28, 28)
-TextButton.Position = UDim2.new(1, -34, 0, 6)
-TextButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-TextButton.Text = "ðx\29\25"
-TextButton.TextScaled = true
-TextButton.Font = Enum.Font.GothamBold
-TextButton.TextColor3 = Color3.new(1, 1, 1)
-TextButton.Parent = ScreenGui
-
-TextButton.MouseButton1Click:Connect(function()
-	TextButton.Text = "ðx\29\25"
-	TextButton.BackgroundColor3 = Color3.fromRGB(70, 30, 30)
-end)
-
-TextButton.Text = "ðx\29\28"
-TextButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-
-ImageButton.InputBegan:Connect(function(input, gameProcessed)
-end)
-
-UserInputService.InputChanged:Connect(function(input2, gameProcessed2)
-end)
-
-UserInputService.InputEnded:Connect(function(input3, gameProcessed3)
-end)
-
-TweenService:Create(ImageButton, TweenInfo.new(0.08), { ImageColor3 = Color3.new(0, 0, 0) })
-TweenService:Create(ImageButton, TweenInfo.new(0.08), { ImageColor3 = Color3.new(1, 1, 1) })
-
-ImageButton.InputBegan:Connect(function(input4, gameProcessed4)
-end)
-
-ImageButton.InputEnded:Connect(function(input5, gameProcessed5)
-end)
-
-ImageButton.MouseButton1Click:Connect(function()
-	Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-	local players = Players:GetPlayers()
-	for k, v in pairs(players) do
-		v.Character:FindFirstChild("HumanoidRootPart")
-		v.Character:FindFirstChild("Humanoid")
+local dragging, dragStart, startPos
+MainButton.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = MainButton.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
 	end
-	
-	local descendants = workspace:GetDescendants()
-	local v2 = nil
-	for k2, v2_item in pairs(descendants) do
-		if v2_item:FindFirstChild("Humanoid") and v2_item:FindFirstChild("HumanoidRootPart") then
-			v2 = v2_item
-			break
-		end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local delta = input.Position - dragStart
+		MainButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 	end
-	
-	if v2 and v2:FindFirstChild("HumanoidRootPart") then
-		print("Target found:", v2.HumanoidRootPart.Parent.Name)
-	end
-	
-	local Moveset = Players.LocalPlayer.Character:FindFirstChild("Moveset")
-	local DivergentFist = Moveset:FindFirstChild("Divergent Fist")
-	local Knit = ReplicatedStorage:FindFirstChild("Knit")
-	local Knit2 = Knit:FindFirstChild("Knit")
-	local Services = Knit2:FindFirstChild("Services")
-	local DivergentFistService = Services:FindFirstChild("DivergentFistService")
-	local RE = DivergentFistService:FindFirstChild("RE")
-	local Activated = RE:FindFirstChild("Activated")
-	
-	spawn(function(...)
-		if v2 and v2:FindFirstChild("HumanoidRootPart") then
-			Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-			Players.LocalPlayer.Character:FindFirstChild("Humanoid")
-			((v2.HumanoidRootPart.Position + (v2.HumanoidRootPart.CFrame.LookVector * -5)) - Players.LocalPlayer.Character.HumanoidRootPart.Position).Unit:Cross(Vector3.new(0, 1, 0))
-			v2.HumanoidRootPart.CFrame.LookVector:Cross((Players.LocalPlayer.Character.HumanoidRootPart.Position - v2.HumanoidRootPart.Position).Unit)
+end)
+
+MainButton.MouseButton1Click:Connect(function()
+	pcall(function()
+		local character = LocalPlayer.Character
+		if not character then return end
+		
+		local Moveset = character:FindFirstChild("Moveset")
+		local DivergentFist = Moveset and Moveset:FindFirstChild("Divergent Fist")
+		
+		local Knit = ReplicatedStorage:FindFirstChild("Knit")
+		local Knit2 = Knit and Knit:FindFirstChild("Knit")
+		local Services = Knit2 and Knit2:FindFirstChild("Services")
+		local DivergentFistService = Services and Services:FindFirstChild("DivergentFistService")
+		local RE = DivergentFistService and DivergentFistService:FindFirstChild("RE")
+		local Activated = RE and RE:FindFirstChild("Activated")
+		
+		if Activated and DivergentFist then
+			Activated:FireServer(DivergentFist)
+			task.wait(0.33)
+			Activated:FireServer(DivergentFist)
 		end
 	end)
-	
-	Activated:FireServer(DivergentFist)
-	print("FIRED HIT 1")
-	task.wait(0.33)
-	Activated:FireServer(DivergentFist)
-	print("FIRED HIT 2 (0.33s after hit 1)")
 end)
