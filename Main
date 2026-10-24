@@ -2,6 +2,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local isAutoBlockEnabled = false
@@ -10,20 +11,33 @@ local isBlocking = false
 local lastAttackTime = 0
 local lockedTarget = nil
 
--- Tạo Cyberpunk Highlight
-local cyberHighlight = Instance.new("Highlight")
-cyberHighlight.Name = "CyberpunkTarget"
-cyberHighlight.FillColor = Color3.fromRGB(255, 0, 128) -- Hồng Neon
-cyberHighlight.OutlineColor = Color3.fromRGB(0, 255, 255) -- Xanh Cyan
-cyberHighlight.FillTransparency = 0.5
-cyberHighlight.OutlineTransparency = 0
-cyberHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-
+-- Nhận diện đòn đánh qua Click chuột
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if not gameProcessed and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
         lastAttackTime = tick()
     end
 end)
+
+-- Bắt sự kiện khi dùng Vũ khí (Tool) để tránh tự block
+local function onCharacterAdded(char)
+    char.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            child.Activated:Connect(function()
+                lastAttackTime = tick()
+            end)
+        end
+    end)
+end
+if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
+LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+
+local cyberHighlight = Instance.new("Highlight")
+cyberHighlight.Name = "CyberpunkTarget"
+cyberHighlight.FillColor = Color3.fromRGB(255, 0, 128)
+cyberHighlight.OutlineColor = Color3.fromRGB(0, 255, 255)
+cyberHighlight.FillTransparency = 0.5
+cyberHighlight.OutlineTransparency = 0
+cyberHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 
 local blockService = ReplicatedStorage:WaitForChild("Knit", 10)
 if blockService then
@@ -41,7 +55,7 @@ if not pcall(function() ScreenGui.Parent = CoreGui end) then
 end
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 200, 0, 185) -- Tăng chiều cao chứa nút Lock
+MainFrame.Size = UDim2.new(0, 200, 0, 185)
 MainFrame.Position = UDim2.new(0.5, -100, 0.4, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 MainFrame.BorderSizePixel = 0
@@ -52,7 +66,7 @@ Instance.new("UIStroke", MainFrame).Color = Color3.fromRGB(60, 60, 60)
 local TopBar = Instance.new("TextLabel")
 TopBar.Size = UDim2.new(1, 0, 0, 30)
 TopBar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-TopBar.Text = "  AUTO BLOCK V2"
+TopBar.Text = "  AUTO BLOCK V3"
 TopBar.TextColor3 = Color3.fromRGB(255, 255, 255)
 TopBar.Font = Enum.Font.GothamBold
 TopBar.TextSize = 14
@@ -76,7 +90,6 @@ ToggleBtn.TextSize = 13
 ToggleBtn.Parent = MainFrame
 Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 6)
 
--- Nút Khóa Mục Tiêu
 local LockBtn = Instance.new("TextButton")
 LockBtn.Size = UDim2.new(0.85, 0, 0, 30)
 LockBtn.Position = UDim2.new(0.075, 0, 0.42, 0)
@@ -117,7 +130,7 @@ Instance.new("UICorner", SliderBg).CornerRadius = UDim.new(0, 4)
 
 local SliderFill = Instance.new("Frame")
 SliderFill.Size = UDim2.new((blockDistance - 3) / 37, 0, 1, 0)
-SliderFill.BackgroundColor3 = Color3.fromRGB(0, 255, 255) -- Cyan
+SliderFill.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
 SliderFill.Parent = SliderBg
 Instance.new("UICorner", SliderFill).CornerRadius = UDim.new(0, 4)
 
@@ -131,7 +144,6 @@ local function getRootPart(char)
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
--- Logic Khóa mục tiêu gần nhất
 LockBtn.MouseButton1Click:Connect(function()
     if lockedTarget then
         lockedTarget = nil
@@ -164,7 +176,7 @@ LockBtn.MouseButton1Click:Connect(function()
             lockedTarget = closest
             cyberHighlight.Parent = closest
             LockBtn.Text = "LOCKED: " .. closest.Name
-            LockBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 128) -- Đổi màu nút sang Hồng Neon
+            LockBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 128)
         end
     end
 end)
@@ -216,7 +228,7 @@ local function lookAtTarget(targetPart)
     if myRoot and targetPart then
         if hum then hum.AutoRotate = false end
         myRoot.CFrame = CFrame.lookAt(myRoot.Position, Vector3.new(targetPart.Position.X, myRoot.Position.Y, targetPart.Position.Z))
-        task.delay(0.4, function() if hum then hum.AutoRotate = true end end)
+        task.delay(0.2, function() if hum then hum.AutoRotate = true end end)
     end
 end
 
@@ -226,18 +238,18 @@ local function triggerBlock()
         StatusLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
         return false
     end
-    local success = pcall(function() activatedRemote:FireServer() end)
-    if success then
-        StatusLabel.Text = "System: BLOCKED!"
-        StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
-        task.delay(0.4, function()
-            pcall(function() deactivatedRemote:FireServer() end)
-            StatusLabel.Text = "System: Idle"
-            StatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-        end)
-        return true
-    end
-    return false
+    
+    pcall(function() activatedRemote:FireServer() end)
+    StatusLabel.Text = "System: BLOCKED!"
+    StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+    
+    -- Giảm delay xuống 0.1s để block liên tục các đòn combo M1
+    task.delay(0.1, function()
+        pcall(function() deactivatedRemote:FireServer() end)
+        StatusLabel.Text = "System: Idle"
+        StatusLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+    end)
+    return true
 end
 
 local function setupRemoteListener(remote)
@@ -247,13 +259,24 @@ local function setupRemoteListener(remote)
 
     remote.OnClientEvent:Connect(function(...)
         if not isAutoBlockEnabled or isBlocking then return end
-        if tick() - lastAttackTime < 0.3 then return end
+        
+        -- Tăng thời gian bỏ qua tín hiệu khi bạn vừa đánh lên 0.4s
+        if tick() - lastAttackTime < 0.4 then return end
 
         local myChar = LocalPlayer.Character
         local myRoot = getRootPart(myChar)
         local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
 
         if not myRoot or not myHum or myHum.Health <= 0 then return end
+
+        -- Lỗi 1: Kiểm tra xem BẢN THÂN có đang bị Ragdoll/Ngã không
+        local myState = myHum:GetState()
+        local amIRagdolled = myHum.PlatformStand or myHum.Sit or 
+                             myState == Enum.HumanoidStateType.Physics or 
+                             myState == Enum.HumanoidStateType.Dead or 
+                             myState == Enum.HumanoidStateType.Ragdoll or
+                             myState == Enum.HumanoidStateType.FallingDown
+        if amIRagdolled then return end
 
         local args = {...}
         local primaryActor = nil
@@ -269,7 +292,6 @@ local function setupRemoteListener(remote)
 
         if primaryActor == myChar or (primaryActor and primaryActor.Name == LocalPlayer.Name) then return end
 
-        -- NẾU CÓ LOCKED TARGET, CHỈ PHẢN ỨNG VỚI TARGET ĐÓ
         if lockedTarget then
             if primaryActor ~= lockedTarget then return end
         end
@@ -282,7 +304,6 @@ local function setupRemoteListener(remote)
                 local model = arg:IsA("Model") and arg or arg:FindFirstAncestorOfClass("Model")
                 
                 if model and model ~= myChar and model.Name ~= LocalPlayer.Name then
-                    -- NẾU CÓ LOCKED TARGET, BỎ QUA CÁC MODEL KHÁC
                     if lockedTarget and model ~= lockedTarget then continue end
 
                     local hum = model:FindFirstChildOfClass("Humanoid")
@@ -312,7 +333,8 @@ local function setupRemoteListener(remote)
             isBlocking = true
             lookAtTarget(closestTarget)
             triggerBlock()
-            task.delay(0.4, function() isBlocking = false end)
+            -- Lỗi 2: Giảm thời gian cooldown block xuống 0.1s để bắt được combo
+            task.delay(0.1, function() isBlocking = false end)
         end
     end)
 end
@@ -322,7 +344,6 @@ for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
 end
 ReplicatedStorage.DescendantAdded:Connect(setupRemoteListener)
 
--- Giữ Highlight dính chặt nếu mục tiêu respawn
 RunService.Heartbeat:Connect(function()
     if lockedTarget and cyberHighlight.Parent ~= lockedTarget then
         if lockedTarget.Parent then
